@@ -1,0 +1,271 @@
+{
+    "name": "BACOWR Orchestrator (Enforcement Mode)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "start_job",
+                "options": {}
+            },
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://localhost:8000/analyze_preflight",
+                "method": "POST",
+                "jsonParameters": true,
+                "options": {},
+                "bodyParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "publisher_domain",
+                            "value": "={{$json.body.publisher_domain}}"
+                        },
+                        {
+                            "name": "target_url",
+                            "value": "={{$json.body.target_url}}"
+                        },
+                        {
+                            "name": "anchor_text",
+                            "value": "={{$json.body.anchor_text}}"
+                        }
+                    ]
+                }
+            },
+            "name": "Preflight Agent (API)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsonParameters": true,
+                "bodyParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "persona",
+                            "value": "={{$json.persona}}"
+                        },
+                        {
+                            "name": "variable_marriage",
+                            "value": "={{$json.variable_marriage}}"
+                        },
+                        {
+                            "name": "serp_data",
+                            "value": "={{$json.serp_data}}"
+                        }
+                    ]
+                },
+                "url": "http://localhost:8000/generate_writer_prompt",
+                "method": "POST"
+            },
+            "name": "Construct Prompt Constraints",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 2,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo",
+                "messages": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "={{$json.system_prompt}}"
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{$json.user_task_prompt}}"
+                        }
+                    ]
+                }
+            },
+            "name": "Writer Agent (LLM)",
+            "type": "n8n-nodes-base.openai",
+            "typeVersion": 1,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://localhost:8000/validate_article",
+                "method": "POST",
+                "jsonParameters": true,
+                "bodyParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "article_text",
+                            "value": "={{$json.content}}"
+                        },
+                        {
+                            "name": "original_requirements",
+                            "value": "={{$node[\"Preflight Agent (API)\"].json}}"
+                        }
+                    ]
+                }
+            },
+            "name": "Validator Agent",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 2,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{$json.passed}}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "name": "Quality Gate",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "content": "Article Approved! \n\nOutput:\n{{$json.final_article}}"
+            },
+            "name": "Delivery",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 1,
+            "position": [
+                1450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo",
+                "messages": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "You are a senior editor. Fix the issues listed in the validation report."
+                        },
+                        {
+                            "role": "user",
+                            "content": "Validation Faults: {{$json.issues}}\n\nOriginal Text: {{$node[\"Writer Agent (LLM)\"].json.content}}"
+                        }
+                    ]
+                }
+            },
+            "name": "Revision Agent",
+            "type": "n8n-nodes-base.openai",
+            "typeVersion": 1,
+            "position": [
+                1450,
+                450
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Preflight Agent (API)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Preflight Agent (API)": {
+            "main": [
+                [
+                    {
+                        "node": "Construct Prompt Constraints",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Construct Prompt Constraints": {
+            "main": [
+                [
+                    {
+                        "node": "Writer Agent (LLM)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Writer Agent (LLM)": {
+            "main": [
+                [
+                    {
+                        "node": "Validator Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validator Agent": {
+            "main": [
+                [
+                    {
+                        "node": "Quality Gate",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Quality Gate": {
+            "main": [
+                [
+                    {
+                        "node": "Delivery",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Revision Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Revision Agent": {
+            "main": [
+                [
+                    {
+                        "node": "Validator Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
